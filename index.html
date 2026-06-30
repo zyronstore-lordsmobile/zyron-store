@@ -40,6 +40,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .hero p{font-size:14px;color:var(--ts);max-width:460px;line-height:1.7;margin-bottom:1.5rem}
 .hbtns{display:flex;gap:10px;flex-wrap:wrap}
 .btnblk{display:inline-flex;align-items:center;gap:7px;padding:9px 18px;background:var(--tp);color:var(--s0);border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;text-decoration:none}
+.btnblk:disabled{opacity:0.6;cursor:not-allowed}
 .btnout{display:inline-flex;align-items:center;gap:7px;padding:9px 18px;background:transparent;color:var(--tp);border:0.5px solid var(--bs);border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;text-decoration:none}
 .stats{display:flex;gap:2rem;margin-top:1.75rem;flex-wrap:wrap}
 .sv{font-size:21px;font-weight:500}.sl{font-size:11px;color:var(--tm);margin-top:2px}
@@ -89,11 +90,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .ffoot{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
 .fnote{font-size:11px;color:var(--tm);display:flex;align-items:center;gap:5px}
 .toast{position:fixed;top:20px;right:20px;background:var(--s2);border:0.5px solid #16a34a;border-radius:8px;padding:11px 16px;font-size:12px;color:var(--tsu);display:none;align-items:center;gap:7px;z-index:100}
+.toast.error{border-color:#dc2626;color:var(--tda)}
 .footer{display:flex;align-items:center;justify-content:center;gap:8px;padding-top:1rem;font-size:11px;color:var(--tm)}
 </style>
 </head>
 <body>
-<div class="toast" id="toast"><i class="ti ti-circle-check"></i> Order submitted — check your Discord DMs!</div>
+<div class="toast" id="toast"><i class="ti ti-circle-check"></i> <span id="toastmsg">Order submitted — check your Discord DMs!</span></div>
 <div class="z">
   <nav class="nav">
     <div class="logo">
@@ -160,12 +162,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="divider"></div>
     <div class="ffoot">
       <div class="fnote"><i class="ti ti-brand-discord"></i> We'll DM you on Discord to confirm and set a price.</div>
-      <button class="btnblk" onclick="submitOrder()"><i class="ti ti-send"></i> Submit order</button>
+      <button class="btnblk" id="submitBtn" onclick="submitOrder()"><i class="ti ti-send"></i> Submit order</button>
     </div>
   </div>
   <div class="footer"><i class="ti ti-sword"></i> Zyron Lords Mobile Kill Store</div>
 </div>
 <script>
+const WEBHOOK_URL = "https://discord.com/api/webhooks/1521474392004235294/s1D85-OkTWdJRZ4ULOP9hNxVfHtBNOWOak2WmPWmAHvCWs3VNRuk5fPOkiArbC9q78rX";
+
 const kills=[
   {id:1,name:'1M T1 kills',desc:'1 million T1 troops eliminated. Great for a quick kill event boost.',badge:null},
   {id:2,name:'5M T1 kills',desc:'5 million T1 troops — solid points for your kill event.',badge:'hot'},
@@ -198,14 +202,63 @@ function toggle(id){
     ?'<span style="color:var(--tm)">Select a kill quantity from above</span>'
     :[...sel].map(i=>{const k=kills.find(x=>x.id===i);return`<span class="stag"><i class="ti ti-check"></i>${k.name}</span>`;}).join('');
 }
-function submitOrder(){
+function showToast(msg, isError){
+  const t=document.getElementById('toast');
+  document.getElementById('toastmsg').textContent=msg;
+  t.classList.toggle('error', !!isError);
+  t.querySelector('i').className = isError ? 'ti ti-alert-circle' : 'ti ti-circle-check';
+  t.style.display='flex';
+  setTimeout(()=>t.style.display='none',4500);
+}
+async function submitOrder(){
   const ign=document.getElementById('ign').value.trim();
   const disc=document.getElementById('disc').value.trim();
+  const kingdom=document.getElementById('kingdom').value.trim();
+  const timing=document.getElementById('timing').value || 'Any time';
   if(!ign||!disc){alert('Enter your IGN and Discord username to continue.');return;}
   if(sel.size===0){alert('Select a kill quantity from the catalog.');return;}
-  const t=document.getElementById('toast');
-  t.style.display='flex';
-  setTimeout(()=>t.style.display='none',4000);
+
+  const selectedNames=[...sel].map(i=>kills.find(x=>x.id===i).name).join(', ');
+  const btn=document.getElementById('submitBtn');
+  btn.disabled=true;
+  btn.innerHTML='<i class="ti ti-loader-2"></i> Sending...';
+
+  const payload = {
+    embeds: [{
+      title: "New Kill Order — Zyron",
+      color: 2326507,
+      fields: [
+        { name: "IGN", value: ign, inline: true },
+        { name: "Discord", value: disc, inline: true },
+        { name: "Kingdom / Server", value: kingdom || "Not specified", inline: true },
+        { name: "Timing", value: timing, inline: true },
+        { name: "Quantity", value: selectedNames, inline: false },
+      ],
+      timestamp: new Date().toISOString()
+    }]
+  };
+
+  try {
+    const res = await fetch(WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if(!res.ok) throw new Error("Webhook failed");
+    showToast("Order submitted — we'll DM you on Discord shortly!", false);
+    document.getElementById('ign').value='';
+    document.getElementById('disc').value='';
+    document.getElementById('kingdom').value='';
+    document.getElementById('timing').value='';
+    sel.clear();
+    render();
+    document.getElementById('selshow').innerHTML='<span style="color:var(--tm)">Select a kill quantity from above</span>';
+  } catch(err) {
+    showToast("Something went wrong. Please DM us directly on Discord instead.", true);
+  } finally {
+    btn.disabled=false;
+    btn.innerHTML='<i class="ti ti-send"></i> Submit order';
+  }
 }
 render();
 </script>
